@@ -36,6 +36,7 @@ public class JSpider {
 		final Set<URI> uriArchive = new TreeSet<>();
 		final Set<URI> images = new TreeSet<>();
 
+		// final URI baseUri = new URI("https://de.wikipedia.org");
 		final URI baseUri = new URI("https://www.hgb-leipzig.de");
 
 		uriList.add(baseUri);
@@ -48,19 +49,24 @@ public class JSpider {
 			try {
 				doc = Jsoup.connect(thisUri.toString()).userAgent("Mozilla").timeout(5000).get();
 			} catch (final HttpStatusException e) {
-				System.err.println("[HttpStatusException: Unable to get URL: " + thisUri.toString() + "]");
+				// System.err.println("[HttpStatusException: Unable to get URL: " +
+				// thisUri.toString() + "]");
 				continue;
 			} catch (final IllegalArgumentException e) {
-				System.err.println("[IllegalArgumentException: Unable to get URL: " + thisUri.toString() + "]");
+				// System.err.println("[IllegalArgumentException: Unable to get URL: " +
+				// thisUri.toString() + "]");
 				continue;
 			} catch (final UnsupportedMimeTypeException e) {
-				System.err.println("[UnsupportedMimeTypeException: Unable to get URL: " + thisUri.toString() + "]");
+				// System.err.println("[UnsupportedMimeTypeException: Unable to get URL: " +
+				// thisUri.toString() + "]");
 				continue;
 			} catch (final SocketTimeoutException e) {
-				System.err.println("[SocketTimeoutException: Unable to get URL: " + thisUri.toString() + "]");
+				// System.err.println("[SocketTimeoutException: Unable to get URL: " +
+				// thisUri.toString() + "]");
 				continue;
 			} catch (final MalformedURLException e) {
-				System.err.println("[MalformedURLException: Unable to get URL: " + thisUri.toString() + "]");
+				// System.err.println("[MalformedURLException: Unable to get URL: " +
+				// thisUri.toString() + "]");
 				continue;
 			}
 
@@ -90,7 +96,7 @@ public class JSpider {
 					}
 
 				} catch (final URISyntaxException e1) {
-					System.err.println("<URISyntaxException: " + e.attr("href").trim() + ">");
+					// System.err.println("<URISyntaxException: " + e.attr("href").trim() + ">");
 					return;
 				}
 			});
@@ -109,14 +115,15 @@ public class JSpider {
 					// System.err.println("[" + newUri.getHost() + "]");
 
 					if (!imgUri.getHost().equals(baseUri.getHost())) {
-						System.err.println("[" + imgUri.getHost() + "]");
+						System.err.println("===>>> <" + imgUri.getHost() + ">");
 					} else {
-						System.err.print(".");
+						System.err.println("[" + thisUri.toASCIIString() + "] -> [" + imgUri.toASCIIString() + "]");
 					}
+
 					images.add(imgUri);
 
 				} catch (final URISyntaxException e1) {
-					System.err.println("<URISyntaxException: " + e.attr("href").trim() + ">");
+					// System.err.println("<URISyntaxException: " + e.attr("href").trim() + ">");
 					return;
 				}
 
