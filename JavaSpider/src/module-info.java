@@ -1,0 +1,9 @@
+/**
+ * 
+ */
+/**
+ * 
+ */
+module JavaSpider {
+	requires jsoup;
+}
