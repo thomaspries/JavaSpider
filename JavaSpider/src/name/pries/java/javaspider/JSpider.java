@@ -10,8 +10,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import org.jsoup.HttpStatusException;
@@ -24,7 +27,7 @@ import org.jsoup.nodes.Document;
  */
 public class JSpider {
 
-	protected final static List<String> defectiveUris = new ArrayList<>();
+	protected final static Map<String, String> defectiveUris = new TreeMap<>();
 
 	/**
 	 * @param args
@@ -47,6 +50,7 @@ public class JSpider {
 		final String[] srcs = { "iframe", "img", "script", "source", "track" };
 
 		final Set<URI> srcSet = new TreeSet<>();
+		final Set<URI> opaqueUris = new TreeSet<>();
 		final List<URL> urlList = new ArrayList<>();
 
 		while (uriToDo.size() > 0) {
@@ -59,28 +63,29 @@ public class JSpider {
 			System.err.println(currUri.toURL().toString());
 			System.err.println("         hrefs: <" + urlList.size() + ">");
 			System.err.println("          srcs: <" + srcSet.size() + ">");
+			System.err.println("        opaque: <" + opaqueUris.size() + ">");
 			System.err.println("defective URIs: <" + defectiveUris.size() + ">");
 
 			final Document doc = getDocument(currUri);
 			if (doc == null) {
-				defectiveUris.add(currUri.toASCIIString());
+				defectiveUris.put(currUri.toASCIIString(), "unable to create document");
 				continue;
 			}
 
 			// get all hrefs
 			for (final String href : hrefs) {
 				doc.select(href).forEach(e -> {
-					final URI newUri = getNewUri(currUri, e.attr("href").trim());
+					final URI newUri = getNewUri(currUri, e.attr("abs:href").trim());
 					if ((newUri != null)) {
 
-						if (newUri.isOpaque())
+						if (newUri.isOpaque()) {
+							opaqueUris.add(newUri);
 							return;
+						}
 
 						if (!uriVisited.contains(newUri)) {
 							uriToDo.add(newUri);
 						}
-					} else {
-						defectiveUris.add(e.attr("href").trim());
 					}
 				});
 			}
@@ -88,25 +93,30 @@ public class JSpider {
 			// get all srcs
 			for (final String src : srcs) {
 				doc.select(src).forEach(e -> {
-					final URI newUri = getNewUri(currUri, e.attr("src").trim());
+					final URI newUri = getNewUri(currUri, e.attr("abs:src").trim());
+
+					if (newUri.isOpaque()) {
+						opaqueUris.add(newUri);
+						return;
+					}
+
 					if (newUri != null) {
 						if (!uriVisited.contains(newUri)) {
 							srcSet.add(newUri);
 						}
-					} else {
-						defectiveUris.add(e.attr("src").trim());
 					}
 				});
 			}
 
-			if (defectiveUris.size() > 1000) {
+			if (defectiveUris.size() > 200) {
 				break;
 			}
-
 		}
 
-		for (final String str : defectiveUris) {
-			System.err.println(str);
+		final Iterator<String> iter = defectiveUris.keySet().iterator();
+		while (iter.hasNext()) {
+			final String uri = iter.next();
+			System.err.println("<" + uri + "> [" + defectiveUris.get(uri) + "]");
 		}
 
 		System.out.println("That's all folks ...!");
@@ -125,22 +135,18 @@ public class JSpider {
 
 		try {
 			uri = new URI(src);
-			// handle this URIs later
-			if (uri.isOpaque())
-				return null;
 
 			if (uri.isAbsolute()) {
 				return uri.normalize();
 			}
+
 			return baseUri.resolve(uri).normalize();
 
 		} catch (final URISyntaxException e) {
-			// TODO Auto-generated catch block
-			defectiveUris.add(src);
-			// e.printStackTrace();
+			defectiveUris.put(src, "URISyntaxException");
+			return null;
 		}
 
-		return null;
 	}
 
 	/**
@@ -155,91 +161,34 @@ public class JSpider {
 		} catch (final HttpStatusException e) {
 			// System.err.println("[HttpStatusException: Unable to get URL: " +
 			// thisUri.toString() + "]");
+			defectiveUris.put(thisUri.toString(), "HttpStatusException");
 
 		} catch (final IllegalArgumentException e) {
 			// System.err.println("[IllegalArgumentException: Unable to get URL: " +
 			// thisUri.toString() + "]");
+			defectiveUris.put(thisUri.toString(), "IllegalArgumentException");
 
 		} catch (final UnsupportedMimeTypeException e) {
 			// System.err.println("[UnsupportedMimeTypeException: Unable to get URL: " +
 			// thisUri.toString() + "]");
+			defectiveUris.put(thisUri.toString(), "UnsupportedMimeTypeException");
 
 		} catch (final SocketTimeoutException e) {
 			// System.err.println("[SocketTimeoutException: Unable to get URL: " +
 			// thisUri.toString() + "]");
+			defectiveUris.put(thisUri.toString(), "SocketTimeoutException");
 
 		} catch (final MalformedURLException e) {
 			// System.err.println("[MalformedURLException: Unable to get URL: " +
 			// thisUri.toString() + "]");
+			defectiveUris.put(thisUri.toString(), "MalformedURLException");
 
 		} catch (final IOException e) {
 			// TODO Auto-generated catch block
-
+			defectiveUris.put(thisUri.toString(), "IOException");
 		}
 
-		defectiveUris.add(thisUri.toString());
-
-		return null;
-	}
-
-	/**
-	 * remove fragment vorm URI
-	 *
-	 * @param uri
-	 * @return
-	 * @throws URISyntaxException
-	 */
-	public static URI removeFragment(final URI uri) {
-		final String fragment = uri.getFragment();
-
-		if ((fragment != null) && (fragment.length() > 0)) {
-			final int index = uri.toASCIIString().lastIndexOf(fragment);
-			if (index > -1) {
-				final String newStr = uri.toASCIIString().substring(0, index - 1);
-				// System.err.println("---------------------------------");
-				// System.err.println("URI: <"+uri.toASCIIString()+">");
-				// System.err.println("new: <"+newStr+">");
-				// System.err.println("---------------------------------");
-
-				if (newStr.length() <= 0)
-					return null;
-				try {
-					return new URI(newStr);
-				} catch (final URISyntaxException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-					return null;
-				}
-			}
-		}
-
-		return uri;
-	}
-
-	/**
-	 *
-	 * @param base
-	 * @param uri
-	 * @return
-	 */
-	public static URI makeAbsolute(final URI base, final URI uri) {
-
-		if (uri == null)
-			return base;
-
-		if (uri.isAbsolute())
-			return uri;
-
-		if (base != null) {
-
-			try {
-				return new URI(base.toASCIIString() + "/" + uri.toASCIIString()).normalize();
-			} catch (final URISyntaxException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				return null;
-			}
-		}
+		defectiveUris.put(thisUri.toString(), "unknown reason");
 
 		return null;
 	}
