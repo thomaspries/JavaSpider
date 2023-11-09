@@ -8,6 +8,7 @@ import java.net.MalformedURLException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -23,6 +24,8 @@ import org.jsoup.nodes.Document;
  */
 public class JSpider {
 
+	protected final static List<String> defectiveUris = new ArrayList<>();
+
 	/**
 	 * @param args
 	 * @throws IOException
@@ -32,111 +35,151 @@ public class JSpider {
 
 		System.out.println("Here I am ...");
 
-		final List<URI> uriList = new ArrayList<>();
-		final Set<URI> uriArchive = new TreeSet<>();
-		final Set<URI> images = new TreeSet<>();
+		final URI baseUri = new URI("https://de.wikipedia.org");
+		// final URI baseUri = new URI("https://www.heise.de/newsticker/");
+		// final URI baseUri = new URI("https://www.hgb-leipzig.de");
 
-		// final URI baseUri = new URI("https://de.wikipedia.org");
-		final URI baseUri = new URI("https://www.hgb-leipzig.de");
+		final List<URI> uriToDo = new ArrayList<>();
+		final Set<URI> uriVisited = new TreeSet<>();
+		uriToDo.add(baseUri);
 
-		uriList.add(baseUri);
+		final String[] hrefs = { "a", "link", "area" };
+		final String[] srcs = { "iframe", "img", "script", "source", "track" };
 
-		while (uriList.size() > 0) {
-			final URI thisUri = uriList.removeFirst();
+		final Set<URI> srcSet = new TreeSet<>();
+		final List<URL> urlList = new ArrayList<>();
 
-			Document doc = null;
+		while (uriToDo.size() > 0) {
+			final URI currUri = uriToDo.removeFirst();
 
-			try {
-				doc = Jsoup.connect(thisUri.toString()).userAgent("Mozilla").timeout(5000).get();
-			} catch (final HttpStatusException e) {
-				// System.err.println("[HttpStatusException: Unable to get URL: " +
-				// thisUri.toString() + "]");
-				continue;
-			} catch (final IllegalArgumentException e) {
-				// System.err.println("[IllegalArgumentException: Unable to get URL: " +
-				// thisUri.toString() + "]");
-				continue;
-			} catch (final UnsupportedMimeTypeException e) {
-				// System.err.println("[UnsupportedMimeTypeException: Unable to get URL: " +
-				// thisUri.toString() + "]");
-				continue;
-			} catch (final SocketTimeoutException e) {
-				// System.err.println("[SocketTimeoutException: Unable to get URL: " +
-				// thisUri.toString() + "]");
-				continue;
-			} catch (final MalformedURLException e) {
-				// System.err.println("[MalformedURLException: Unable to get URL: " +
-				// thisUri.toString() + "]");
+			uriVisited.add(currUri);
+			urlList.add(currUri.toURL());
+
+			System.err.println("---------------------------------------------");
+			System.err.println(currUri.toURL().toString());
+			System.err.println("         hrefs: <" + urlList.size() + ">");
+			System.err.println("          srcs: <" + srcSet.size() + ">");
+			System.err.println("defective URIs: <" + defectiveUris.size() + ">");
+
+			final Document doc = getDocument(currUri);
+			if (doc == null) {
+				defectiveUris.add(currUri.toASCIIString());
 				continue;
 			}
 
-			// gather all Links
-			doc.select("a").forEach(e -> {
+			// get all hrefs
+			for (final String href : hrefs) {
+				doc.select(href).forEach(e -> {
+					final URI newUri = getNewUri(currUri, e.attr("href").trim());
+					if ((newUri != null)) {
 
-				try {
-					URI newUri = new URI(e.attr("href").trim());
+						if (newUri.isOpaque())
+							return;
 
-					final String scheme = (newUri.getScheme() == null) ? (thisUri.getScheme()) : (newUri.getScheme());
-					final String host = (newUri.getHost() == null) ? (thisUri.getHost()) : (newUri.getHost());
-
-					// System.err.println("--------------------------------------------------------------");
-					// System.err.println("scheme: <"+scheme+">");
-					// System.err.println(" host: <"+host+">");
-					// System.err.println(" path: <"+newUri.getPath()+">");
-
-					newUri = new URI(scheme, host, newUri.getPath(), null);
-					// System.err.println("newUri: <"+newUri.toASCIIString()+">");
-
-					if (host.equals(baseUri.getHost())) {
-						if (!uriArchive.contains(newUri)) {
-							uriList.add(newUri);
-							uriArchive.add(newUri);
-							// System.err.println("<URLs: " + uriArchive.size() + ">");
+						if (!uriVisited.contains(newUri)) {
+							uriToDo.add(newUri);
 						}
-					}
-
-				} catch (final URISyntaxException e1) {
-					// System.err.println("<URISyntaxException: " + e.attr("href").trim() + ">");
-					return;
-				}
-			});
-
-			// gather all images from the site
-			doc.select("img").forEach(e -> {
-
-				try {
-
-					URI imgUri = new URI(e.attr("src").trim());
-
-					if (imgUri.getHost() == null) {
-						// System.err.println("[host==null: " + e.attr("src").trim() + "]");
-						imgUri = new URI(thisUri.getScheme(), thisUri.getHost(), imgUri.getPath(), null);
-					}
-					// System.err.println("[" + newUri.getHost() + "]");
-
-					if (!imgUri.getHost().equals(baseUri.getHost())) {
-						System.err.println("===>>> <" + imgUri.getHost() + ">");
 					} else {
-						System.err.println("[" + thisUri.toASCIIString() + "] -> [" + imgUri.toASCIIString() + "]");
+						defectiveUris.add(e.attr("href").trim());
 					}
+				});
+			}
 
-					images.add(imgUri);
+			// get all srcs
+			for (final String src : srcs) {
+				doc.select(src).forEach(e -> {
+					final URI newUri = getNewUri(currUri, e.attr("src").trim());
+					if (newUri != null) {
+						if (!uriVisited.contains(newUri)) {
+							srcSet.add(newUri);
+						}
+					} else {
+						defectiveUris.add(e.attr("src").trim());
+					}
+				});
+			}
 
-				} catch (final URISyntaxException e1) {
-					// System.err.println("<URISyntaxException: " + e.attr("href").trim() + ">");
-					return;
-				}
+			if (defectiveUris.size() > 1000) {
+				break;
+			}
 
-			});
 		}
 
-		System.err.println("URIs: <" + uriArchive.size() + ">");
-		System.err.println("IMGs: <" + images.size() + ">");
-
-		// Document doc = Jsoup.connect("https://www.hgb-leipzig.de").get();
-		// doc.select("a").forEach(System.out::println);
+		for (final String str : defectiveUris) {
+			System.err.println(str);
+		}
 
 		System.out.println("That's all folks ...!");
+	}
+
+	/**
+	 * create a new absolute URL
+	 *
+	 * @param thisUri
+	 * @param trim
+	 * @return
+	 */
+	private static URI getNewUri(final URI baseUri, final String src) {
+
+		URI uri = null;
+
+		try {
+			uri = new URI(src);
+			// handle this URIs later
+			if (uri.isOpaque())
+				return null;
+
+			if (uri.isAbsolute()) {
+				return uri.normalize();
+			}
+			return baseUri.resolve(uri).normalize();
+
+		} catch (final URISyntaxException e) {
+			// TODO Auto-generated catch block
+			defectiveUris.add(src);
+			// e.printStackTrace();
+		}
+
+		return null;
+	}
+
+	/**
+	 * get the document and "handle" all the errors
+	 *
+	 * @param thisUri
+	 * @return
+	 */
+	private static Document getDocument(final URI thisUri) {
+		try {
+			return Jsoup.connect(thisUri.toString()).userAgent("Mozilla").timeout(5000).get();
+		} catch (final HttpStatusException e) {
+			// System.err.println("[HttpStatusException: Unable to get URL: " +
+			// thisUri.toString() + "]");
+
+		} catch (final IllegalArgumentException e) {
+			// System.err.println("[IllegalArgumentException: Unable to get URL: " +
+			// thisUri.toString() + "]");
+
+		} catch (final UnsupportedMimeTypeException e) {
+			// System.err.println("[UnsupportedMimeTypeException: Unable to get URL: " +
+			// thisUri.toString() + "]");
+
+		} catch (final SocketTimeoutException e) {
+			// System.err.println("[SocketTimeoutException: Unable to get URL: " +
+			// thisUri.toString() + "]");
+
+		} catch (final MalformedURLException e) {
+			// System.err.println("[MalformedURLException: Unable to get URL: " +
+			// thisUri.toString() + "]");
+
+		} catch (final IOException e) {
+			// TODO Auto-generated catch block
+
+		}
+
+		defectiveUris.add(thisUri.toString());
+
+		return null;
 	}
 
 	/**
